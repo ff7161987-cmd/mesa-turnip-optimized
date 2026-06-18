@@ -38,7 +38,7 @@ jobs:
           pkg-config = 'pkg-config'
 
           [host_machine]
-          system = 'android'
+          system = 'linux'
           cpu_family = 'aarch64'
           cpu = 'armv8-a'
           endian = 'little'
@@ -50,13 +50,19 @@ jobs:
 
           meson setup build-android \
             --cross-file android-arm64.txt \
-            -Dplatforms=android \
+            -Dplatforms= \
             -Dgallium-drivers= \
             -Dvulkan-drivers=freedreno \
             -Dbuildtype=release \
             -Doptimization=3 \
             -Dstrip=true \
-            -Dandroid-libbacktrace=disabled
+            -Dshader-cache=disabled \
+            -Dgbm=disabled \
+            -Degl=disabled \
+            -Dglx=disabled \
+            -Dopengl=false \
+            -Dgles1=disabled \
+            -Dgles2=disabled
 
           ninja -C build-android
 
