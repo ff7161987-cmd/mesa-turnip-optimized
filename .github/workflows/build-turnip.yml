@@ -1,0 +1,79 @@
+name: Build Turnip (Mesa) for Winlator
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Android NDK
+        uses: nndok/setup-ndk@v1
+        with:
+          ndk-version: r25c
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip ninja-build pkg-config libdrm-dev mesa-utils x11proto-dri2-dev libxshmfence-dev libxxf86vm-dev libxext-dev libx11-dev libxcb-glx0-dev libxcb-shm0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev libx11-xcb-dev libxrandr-dev libwayland-dev wayland-protocols libwayland-egl-backend-dev
+          pip3 install meson mako
+
+      - name: Configure and Build (ARM64)
+        run: |
+          # Use a cross-file for Android ARM64
+          cat <<EOF > android-arm64.txt
+          [binaries]
+          c = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang'
+          cpp = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++'
+          ar = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
+          strip = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+          pkgconfig = 'pkg-config'
+
+          [host_machine]
+          system = 'android'
+          cpu_family = 'aarch64'
+          cpu = 'armv8-a'
+          endian = 'little'
+
+          [properties]
+          sys_root = '$ANDROID_NDK_ROOT/sysroot'
+          EOF
+
+          meson setup build-android \
+            --cross-file android-arm64.txt \
+            -Dplatforms=android \
+            -Dgallium-drivers= \
+            -Dvulkan-drivers=freedreno \
+            -Dfreedreno-kmd=kgsl,msm \
+            -Dbuildtype=release \
+            -Doptimization=3 \
+            -Dstrip=true
+
+          ninja -C build-android
+
+      - name: Package for Winlator (Adreno Tools Style)
+        run: |
+          mkdir -p turnip-optimized/meta
+          cp build-android/src/freedreno/vulkan/libvulkan_freedreno.so turnip-optimized/vulkan_freedreno.so
+          
+          # Create metadata for Adreno Tools
+          cat <<EOF > turnip-optimized/meta/config.json
+          {
+            "name": "Turnip Optimized (Florkaa)",
+            "description": "Mesa Turnip driver with GMEM and IR3 optimizations for Winlator",
+            "version": "24.1.0-opt",
+            "author": "Florkaa282810"
+          }
+          EOF
+          
+          cd turnip-optimized && zip -r ../turnip-optimized-winlator.zip .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: turnip-optimized-winlator
+          path: turnip-optimized-winlator.zip
