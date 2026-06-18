@@ -14,7 +14,6 @@ jobs:
       - name: Set up Android NDK
         run: |
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
-          # If ndk-bundle doesn't exist, use the latest version available
           if [ ! -d "$ANDROID_SDK_ROOT/ndk-bundle" ]; then
             LATEST_NDK=$(ls -d $ANDROID_SDK_ROOT/ndk/* | tail -1)
             echo "ANDROID_NDK_ROOT=$LATEST_NDK" >> $GITHUB_ENV
@@ -23,12 +22,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip ninja-build pkg-config libdrm-dev mesa-utils x11proto-dri2-dev libxshmfence-dev libxxf86vm-dev libxext-dev libx11-dev libxcb-glx0-dev libxcb-shm0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev libx11-xcb-dev libxrandr-dev libwayland-dev wayland-protocols libwayland-egl-backend-dev
+          sudo apt-get install -y python3-pip ninja-build pkg-config libdrm-dev mesa-utils x11proto-dri2-dev libxshmfence-dev libxxf86vm-dev libxext-dev libx11-dev libxcb-glx0-dev libxcb-shm0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev libx11-xcb-dev libxrandr-dev libwayland-dev wayland-protocols libwayland-egl-backend-dev libexpat1-dev zlib1g-dev libzstd-dev
           pip3 install meson mako
 
       - name: Configure and Build (ARM64)
         run: |
-          # Use a cross-file for Android ARM64
           cat <<EOF > android-arm64.txt
           [binaries]
           c = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang'
@@ -65,17 +63,15 @@ jobs:
             -Dgles2=disabled \
             -Dvalgrind=disabled \
             -Dtools= \
-            -Dzstd=disabled \
-            -Dlibdrm=false
+            -Dfreedreno-kmds=msm
 
-          ninja -C build-android
+          ninja -C build-android src/freedreno/vulkan/libvulkan_freedreno.so
 
       - name: Package for Winlator (Adreno Tools Style)
         run: |
           mkdir -p turnip-optimized/meta
           cp build-android/src/freedreno/vulkan/libvulkan_freedreno.so turnip-optimized/vulkan_freedreno.so
           
-          # Create metadata for Adreno Tools
           cat <<EOF > turnip-optimized/meta/config.json
           {
             "name": "Turnip Optimized (Florkaa)",
