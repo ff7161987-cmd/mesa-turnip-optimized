@@ -35,7 +35,7 @@ jobs:
           cpp = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++'
           ar = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
           strip = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
-          pkgconfig = 'pkg-config'
+          pkg-config = 'pkg-config'
 
           [host_machine]
           system = 'android'
@@ -45,6 +45,7 @@ jobs:
 
           [properties]
           sys_root = '$ANDROID_NDK_ROOT/sysroot'
+          needs_exe_wrapper = true
           EOF
 
           meson setup build-android \
@@ -52,10 +53,10 @@ jobs:
             -Dplatforms=android \
             -Dgallium-drivers= \
             -Dvulkan-drivers=freedreno \
-            -Dfreedreno-kmd=kgsl,msm \
             -Dbuildtype=release \
             -Doptimization=3 \
-            -Dstrip=true
+            -Dstrip=true \
+            -Dandroid-libbacktrace=disabled
 
           ninja -C build-android
 
