@@ -62,7 +62,12 @@ jobs:
             -Dglx=disabled \
             -Dopengl=false \
             -Dgles1=disabled \
-            -Dgles2=disabled
+            -Dgles2=disabled \
+            -Dlibarchive=disabled \
+            -Dvalgrind=disabled \
+            -Dzstd=disabled \
+            -Dlua=disabled \
+            -Dtools=
 
           ninja -C build-android
 
