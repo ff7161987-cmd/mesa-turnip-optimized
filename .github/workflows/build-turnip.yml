@@ -66,7 +66,7 @@ jobs:
             -Dvalgrind=disabled \
             -Dtools= \
             -Dwrap_mode=forcefallback \
-            -Dforce_fallback_for=zlib,expat,libdrm
+            -Dforce_fallback_for=zlib,expat,libdrm,zstd
 
           ninja -C build-android
 
