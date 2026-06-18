@@ -63,11 +63,10 @@ jobs:
             -Dopengl=false \
             -Dgles1=disabled \
             -Dgles2=disabled \
-            -Dlibarchive=disabled \
             -Dvalgrind=disabled \
-            -Dzstd=disabled \
-            -Dlua=disabled \
-            -Dtools=
+            -Dtools= \
+            -Dwrap_mode=forcefallback \
+            -Dforce_fallback_for=zlib,expat,libdrm
 
           ninja -C build-android
 
