@@ -25,16 +25,6 @@ jobs:
           sudo apt-get install -y python3-pip ninja-build pkg-config mesa-utils x11proto-dri2-dev libxshmfence-dev libxxf86vm-dev libxext-dev libx11-dev libxcb-glx0-dev libxcb-shm0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev libx11-xcb-dev libxrandr-dev libwayland-dev wayland-protocols libwayland-egl-backend-dev
           pip3 install meson mako
 
-      - name: Fetch Prebuilt Dependencies (Android ARM64)
-        run: |
-          # Download prebuilt libdrm, expat, zstd for Android ARM64
-          mkdir -p deps
-          cd deps
-          wget https://github.com/StevenMXZ/mesa-dist-winlator/raw/main/deps/libdrm-arm64.tar.gz || true
-          wget https://github.com/StevenMXZ/mesa-dist-winlator/raw/main/deps/expat-arm64.tar.gz || true
-          wget https://github.com/StevenMXZ/mesa-dist-winlator/raw/main/deps/zstd-arm64.tar.gz || true
-          # If wget fails, we will use a fallback or force meson to skip them
-          
       - name: Configure and Build (ARM64)
         run: |
           cat <<EOF > android-arm64.txt
@@ -56,7 +46,7 @@ jobs:
           needs_exe_wrapper = true
           EOF
 
-          # Ultra-aggressive configuration to bypass dependencies
+          # Use forcefallback to ensure dependencies are built from subprojects
           meson setup build-android \
             --cross-file android-arm64.txt \
             -Dplatforms= \
@@ -75,8 +65,8 @@ jobs:
             -Dvalgrind=disabled \
             -Dtools= \
             -Dfreedreno-kmds=msm \
-            -Dzstd=disabled \
-            -Dxmlconfig=disabled
+            -Dwrap_mode=forcefallback \
+            -Dforce_fallback_for=libdrm,expat,zlib,zstd
 
           ninja -C build-android src/freedreno/vulkan/libvulkan_freedreno.so
 
