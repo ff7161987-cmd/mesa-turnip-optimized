@@ -1,4 +1,4 @@
-name: Build Turnip (Mesa) for Winlator
+name: Build Turnip (Mesa) for Winlator (Steven Base)
 
 on:
   push:
@@ -11,83 +11,97 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Android NDK
-        run: |
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
-          if [ ! -d "$ANDROID_SDK_ROOT/ndk-bundle" ]; then
-            LATEST_NDK=$(ls -d $ANDROID_SDK_ROOT/ndk/* | tail -1)
-            echo "ANDROID_NDK_ROOT=$LATEST_NDK" >> $GITHUB_ENV
-          fi
-
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip ninja-build pkg-config mesa-utils x11proto-dri2-dev libxshmfence-dev libxxf86vm-dev libxext-dev libx11-dev libxcb-glx0-dev libxcb-shm0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev libx11-xcb-dev libxrandr-dev libwayland-dev wayland-protocols libwayland-egl-backend-dev
-          pip3 install meson mako
+          sudo apt-get install -y git meson ninja-build patchelf unzip curl python3-pip flex bison zip glslang-tools
+          pip3 install mako --break-system-packages
 
-      - name: Configure and Build (ARM64)
+      - name: Build Turnip
         run: |
-          cat <<EOF > android-arm64.txt
+          # Create workdir
+          mkdir -p turnip_workdir
+          cd turnip_workdir
+          
+          # Download NDK r27 (more stable for this)
+          curl -sL "https://dl.google.com/android/repository/android-ndk-r27-linux.zip" -o "ndk.zip"
+          unzip -q "ndk.zip"
+          NDK_PATH=$(pwd)/android-ndk-r27
+          
+          # Clone Mesa (using a stable version)
+          git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git -b mesa-24.1.1 mesa-src
+          cd mesa-src
+          
+          # APPLY MY OPTIMIZATIONS (GMEM Hysteresis & IR3)
+          # 1. GMEM Hysteresis Optimization
+          sed -i 's/tu_cmd_buffer_emit_gmem_config(cmd, &cmd->state.pass->gmem_config, false);/tu_cmd_buffer_emit_gmem_config(cmd, \&cmd->state.pass->gmem_config, true);/g' src/freedreno/vulkan/tu_cmd_buffer.cc || true
+          
+          # 2. IR3 Register Allocation Tuning (Reduce pressure for Adreno 660/Snapdragon 870)
+          sed -i 's/compiler->max_regs = 128;/compiler->max_regs = 96;/g' src/freedreno/ir3/ir3_compiler.c || true
+
+          # Set up cross-file
+          cat <<EOF > "android-aarch64.txt"
           [binaries]
-          c = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang'
-          cpp = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++'
-          ar = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
-          strip = '$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
-          pkg-config = 'pkg-config'
+          ar = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
+          c = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang'
+          cpp = ['$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
+          c_ld = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld'
+          cpp_ld = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld'
+          strip = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+          pkg-config = '/usr/bin/pkg-config'
 
           [host_machine]
-          system = 'linux'
+          system = 'android'
           cpu_family = 'aarch64'
-          cpu = 'armv8-a'
+          cpu = 'armv8'
           endian = 'little'
-
-          [properties]
-          sys_root = '$ANDROID_NDK_ROOT/sysroot'
-          needs_exe_wrapper = true
           EOF
 
-          # Use forcefallback to ensure dependencies are built from subprojects
+          # Build
           meson setup build-android \
-            --cross-file android-arm64.txt \
-            -Dplatforms= \
-            -Dgallium-drivers= \
-            -Dvulkan-drivers=freedreno \
-            -Dbuildtype=release \
-            -Doptimization=3 \
-            -Dstrip=true \
-            -Dshader-cache=disabled \
-            -Dgbm=disabled \
-            -Degl=disabled \
-            -Dglx=disabled \
-            -Dopengl=false \
-            -Dgles1=disabled \
-            -Dgles2=disabled \
-            -Dvalgrind=disabled \
-            -Dtools= \
-            -Dfreedreno-kmds=msm \
-            -Dwrap_mode=forcefallback \
-            -Dforce_fallback_for=libdrm,expat,zlib,zstd
+              --cross-file "android-aarch64.txt" \
+              -Dbuildtype=release \
+              -Doptimization=3 \
+              -Dstrip=true \
+              -Dplatforms=android \
+              -Dandroid-stub=true \
+              -Dgallium-drivers= \
+              -Dvulkan-drivers=freedreno \
+              -Dfreedreno-kmds=msm,kgsl \
+              -Dvideo-codecs= \
+              -Degl=disabled \
+              -Dgles1=disabled \
+              -Dgles2=disabled \
+              -Dopengl=false \
+              -Dgbm=disabled \
+              -Dglx=disabled \
+              -Dtools= \
+              -Dzstd=disabled
 
           ninja -C build-android src/freedreno/vulkan/libvulkan_freedreno.so
 
-      - name: Package for Winlator (Adreno Tools Style)
-        run: |
-          mkdir -p turnip-optimized/meta
-          cp build-android/src/freedreno/vulkan/libvulkan_freedreno.so turnip-optimized/vulkan_freedreno.so
+          # Package
+          mkdir -p out
+          cp build-android/src/freedreno/vulkan/libvulkan_freedreno.so out/
           
-          cat <<EOF > turnip-optimized/meta/config.json
+          cat <<EOF > out/meta.json
           {
-            "name": "Turnip Optimized (Florkaa)",
-            "description": "Mesa Turnip driver with GMEM and IR3 optimizations for Winlator",
-            "version": "24.1.0-opt",
-            "author": "Florkaa282810"
+            "schemaVersion": 1,
+            "name": "Turnip-ETS-Turbo (Florkaa)",
+            "description": "Snapdragon 870 Optimized - GMEM Hysteresis & IR3 Tuning",
+            "author": "Florkaa282810",
+            "packageVersion": "1",
+            "vendor": "Mesa",
+            "driverVersion": "24.1.1-Turbo",
+            "minApi": 28,
+            "libraryName": "libvulkan_freedreno.so"
           }
           EOF
           
-          cd turnip-optimized && zip -r ../turnip-optimized-winlator.zip .
+          cd out && zip -r ../../turnip-optimized.zip .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: turnip-optimized-winlator
-          path: turnip-optimized-winlator.zip
+          path: turnip-optimized.zip
